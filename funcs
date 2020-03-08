@@ -1,0 +1,13 @@
+# vim: set ft=sh ff=unix expandtab ts=4
+
+function check-cmd {
+    hash "$1" >/dev/null 2>&1
+    return $?
+}
+
+function die {
+    STATUS=$1
+    shift
+    echo "[ERROR] $*" 1>&2
+    exit $STATUS
+}

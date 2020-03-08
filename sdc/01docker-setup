@@ -1,0 +1,70 @@
+#!/bin/bash
+
+SCRIPT_DIR=$(dirname ${BASH_SOURCE:-$0})
+. "$SCRIPT_DIR"/../funcs
+
+# See https://github.com/rancher/install-docker for available scripts
+DOCKER_SCRIPT="https://raw.githubusercontent.com/rancher/install-docker/master/19.03.5.sh"
+
+CHECK=OK
+if ! check-cmd curl; then
+    echo "[ERROR] curl not installed"
+    CHECK=NOTOK
+fi
+if [ $CHECK != OK ]; then
+    echo "[ERROR] Prerequisites not met. Aborting"
+    exit 1
+fi
+
+# Check if docker is installed
+if ! check-cmd docker; then
+    # Install docker-ce
+    echo "[INFO] docker not installed"
+    curl -s "$DOCKER_SCRIPT" | sudo bash
+    if [ "$?" -ne 0 ]; then
+        echo "[ERROR] Failed to install docker."
+        exit 2
+    fi
+    sudo usermod -aG docker $(id -u -n)
+    echo "[INFO] docker has been successfully installed."
+    echo "Please log out and log back in to take effect."
+    echo "After that please rerun this script."
+    exit 0
+else
+    echo "[INFO] docker found, skip installing"
+fi
+
+sudo mkdir -p /etc/systemd/system/docker.service.d
+
+if [ -n "$http_proxy" ]; then
+    HTTP_PROXY=$http_proxy
+    HTTPS_PROXY=$https_proxy
+    NO_PROXY=$no_proxy
+fi
+if [ -n "$HTTP_PROXY" ]; then
+    if [ -f /etc/systemd/system/docker.service.d/proxy.conf ]; then
+        echo "[INFO] proxy.conf already exists. skip configuring"
+    else
+        echo "[INFO] Configuring /etc/systemd/system/docker.service.d/proxy.conf"
+cat <<-EOS | sudo tee /etc/systemd/system/docker.service.d/proxy.conf
+[Service]
+Environment="HTTP_PROXY=$HTTP_PROXY"
+Environment="HTTPS_PROXY=$HTTPS_PROXY"
+Environment="NO_PROXY=$NO_PROXY"
+EOS
+    fi
+fi
+
+if [ -f /etc/systemd/system/docker.service.d/exec-start.conf ]; then
+    echo "[INFO] exec-start.conf already exists. skip configuring"
+else
+    echo "[INFO] Configuring /etc/systemd/system/docker.service.d/exec-start.conf"
+cat <<-EOS  | sudo tee /etc/systemd/system/docker.service.d/exec-start.conf
+[Service]
+ExecStart=
+ExecStart=/usr/bin/dockerd -H tcp://0.0.0.0:2375 -H fd:// --max-concurrent-downloads=15 --containerd=/run/containerd/containerd.sock
+EOS
+fi
+
+sudo systemctl daemon-reload
+sudo systemctl restart docker

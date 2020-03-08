@@ -1,0 +1,42 @@
+#!/bin/bash
+
+SCRIPT_DIR=$(dirname ${BASH_SOURCE:-$0})
+. "$SCRIPT_DIR"/../funcs
+MVN_URL="http://ftp.jaist.ac.jp/pub/apache/maven/maven-3/3.6.3/binaries/apache-maven-3.6.3-bin.tar.gz"
+
+CHECK=OK
+if ! check-cmd curl; then
+    echo "[ERROR] curl not installed"
+    CHECK=NOTOK
+fi
+if [ $CHECK != OK ]; then
+    echo "[ERROR] Prerequisites not met. Aborting"
+    exit 1
+fi
+
+if ! check-cmd javac; then
+    echo "[INFO] Installing JDK ..."
+    sudo apt install -y openjdk-8-jdk-headless
+else
+    echo "[INFO] javac found, skip installing JDK"
+fi
+
+if ! check-cmd mvn; then
+    echo "[INFO] Installing Apache Maven ..."
+    cd /tmp
+    curl -LO "$MVN_URL" || die 2 "Failed to download Maven package"
+    cd /opt
+    sudo tar xvaf /tmp/apache-maven-*-bin.tar.gz || die 2 "Failed to extract Maven package"
+    sudo ln -s apache-maven-3.6.3 maven || die 2 "Failed to create a symbolic link"
+    mkdir -p $HOME/bin
+    ln -s /opt/maven/bin/mvn $HOME/bin/mvn
+    if ! (echo $PATH | grep $HOME/bin); then
+        PATH=$HOME/bin:$PATH
+    fi
+else
+    echo "[INFO] mvn found. Skip installing Apache Maven"
+fi
+
+mvn -version
+
+echo "[INFO] JDK and Maven have been installed"

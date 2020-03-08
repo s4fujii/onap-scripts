@@ -1,0 +1,2 @@
+export SDC_REPO=$HOME/repos/sdc
+export WORKSPACE=$HOME/sdc-workspace
