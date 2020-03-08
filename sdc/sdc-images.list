@@ -1,0 +1,10 @@
+nexus3.onap.org:10001/onap/sdc-cassandra:1.6-STAGING-latest
+nexus3.onap.org:10001/onap/sdc-cassandra-init:1.6-STAGING-latest
+nexus3.onap.org:10001/onap/sdc-onboard-cassandra-init:1.6-STAGING-latest
+nexus3.onap.org:10001/onap/sdc-backend:1.6-STAGING-latest
+nexus3.onap.org:10001/onap/sdc-backend-init:1.6-STAGING-latest
+nexus3.onap.org:10001/onap/sdc-onboard-backend:1.6-STAGING-latest
+nexus3.onap.org:10001/onap/sdc-frontend:1.6-STAGING-latest
+nexus3.onap.org:10001/onap/sdc-api-tests:1.6-STAGING-latest
+nexus3.onap.org:10001/onap/sdc-ui-tests:1.6-STAGING-latest
+nexus3.onap.org:10001/onap/sdc-simulator:1.6-STAGING-latest
