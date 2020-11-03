@@ -11,3 +11,25 @@ function die {
     echo "[ERROR] $*" 1>&2
     exit $STATUS
 }
+
+function get-my-ip {
+    case `uname -s` in
+        Linux)
+            if check-cmd ip; then
+                # if ip command is available
+                ip route get 8.8.8.8 | awk '/src/{ print $7 }'
+                return
+            elif check-cmd hostname; then
+                hostname -I | awk '{ print $1 }'
+                return
+            fi
+            ;;
+        Darwin)
+            # if system is macOS
+            netstat -rnl -f inet | grep default | head -n1 | awk '{ print $3 }'
+            return
+            ;;
+    esac
+    echo "[WARN] Failed to get host IP address. Using 127.0.0.1 ." 1>&2
+    echo "127.0.0.1"
+}

@@ -18,53 +18,65 @@ fi
 
 # Check if docker is installed
 if ! check-cmd docker; then
-    # Install docker-ce
-    echo "[INFO] docker not installed"
-    curl -s "$DOCKER_SCRIPT" | sudo bash
-    if [ "$?" -ne 0 ]; then
-        echo "[ERROR] Failed to install docker."
-        exit 2
-    fi
-    sudo usermod -aG docker $(id -u -n)
-    echo "[INFO] docker has been successfully installed."
-    echo "Please log out and log back in to take effect."
-    echo "After that please rerun this script."
-    exit 0
+    case `uname -s` in
+    Linux)
+        # Install docker-ce
+        echo "[INFO] docker not installed. Installing it now"
+        curl -fsSL https://get.docker.com -o /tmp/get-docker.sh && sh /tmp/get-docker.sh
+        if [ "$?" -ne 0 ]; then
+            echo "[ERROR] Failed to install docker."
+            exit 2
+        fi
+        sudo usermod -aG docker $(id -u -n)
+        echo "[INFO] docker has been successfully installed."
+        echo "Please log out and log back in to take effect."
+        ;;
+    Darwin)
+        echo "[ERROR] docker is not installed."
+        echo "Please follow the instructions on web site https://docs.docker.com/docker-for-mac/install/"
+        echo "to install Docker Desktop."
+        exit 3
+        ;;
+    esac
 else
     echo "[INFO] docker found, skip installing"
 fi
 
-sudo mkdir -p /etc/systemd/system/docker.service.d
+if [ `uname -s` = Linux ]; then
+    # docker daemon settings
 
-if [ -n "$http_proxy" ]; then
-    HTTP_PROXY=$http_proxy
-    HTTPS_PROXY=$https_proxy
-    NO_PROXY=$no_proxy
-fi
-if [ -n "$HTTP_PROXY" ]; then
-    if [ -f /etc/systemd/system/docker.service.d/proxy.conf ]; then
-        echo "[INFO] proxy.conf already exists. skip configuring"
-    else
-        echo "[INFO] Configuring /etc/systemd/system/docker.service.d/proxy.conf"
-cat <<-EOS | sudo tee /etc/systemd/system/docker.service.d/proxy.conf
+    sudo mkdir -p /etc/systemd/system/docker.service.d
+
+    if [ -n "$http_proxy" ]; then
+        HTTP_PROXY=$http_proxy
+        HTTPS_PROXY=$https_proxy
+        NO_PROXY=$no_proxy
+    fi
+    if [ -n "$HTTP_PROXY" ]; then
+        if [ -f /etc/systemd/system/docker.service.d/proxy.conf ]; then
+            echo "[INFO] proxy.conf already exists. skip configuring"
+        else
+            echo "[INFO] Configuring /etc/systemd/system/docker.service.d/proxy.conf"
+            cat <<-EOS | sudo tee /etc/systemd/system/docker.service.d/proxy.conf
 [Service]
 Environment="HTTP_PROXY=$HTTP_PROXY"
 Environment="HTTPS_PROXY=$HTTPS_PROXY"
 Environment="NO_PROXY=$NO_PROXY"
 EOS
+        fi
     fi
-fi
 
-if [ -f /etc/systemd/system/docker.service.d/exec-start.conf ]; then
-    echo "[INFO] exec-start.conf already exists. skip configuring"
-else
-    echo "[INFO] Configuring /etc/systemd/system/docker.service.d/exec-start.conf"
-cat <<-EOS  | sudo tee /etc/systemd/system/docker.service.d/exec-start.conf
+    if [ -f /etc/systemd/system/docker.service.d/exec-start.conf ]; then
+        echo "[INFO] exec-start.conf already exists. skip configuring"
+    else
+        echo "[INFO] Configuring /etc/systemd/system/docker.service.d/exec-start.conf"
+        cat <<-EOS  | sudo tee /etc/systemd/system/docker.service.d/exec-start.conf
 [Service]
 ExecStart=
 ExecStart=/usr/bin/dockerd -H tcp://0.0.0.0:2375 -H fd:// --max-concurrent-downloads=15 --containerd=/run/containerd/containerd.sock
 EOS
-fi
+    fi
 
-sudo systemctl daemon-reload
-sudo systemctl restart docker
+    sudo systemctl daemon-reload
+    sudo systemctl restart docker
+fi

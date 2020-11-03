@@ -3,9 +3,6 @@
 SCRIPT_DIR=$(dirname ${BASH_SOURCE:-$0})
 . "$SCRIPT_DIR"/../funcs
 
-# See https://github.com/rancher/install-docker for available scripts
-DOCKER_SCRIPT="https://raw.githubusercontent.com/rancher/install-docker/master/19.03.5.sh"
-
 CHECK=OK
 if [ -z "$SDC_REPO" ]; then
     echo "[ERROR] SDC_REPO has not been set"
@@ -16,11 +13,11 @@ if [ -z "$WORKSPACE" ]; then
     CHECK=NOTOK
 fi
 if ! check-cmd curl; then
-    echo "[ERROR] curl not installed"
+    echo "[ERROR] curl is not installed"
     CHECK=NOTOK
 fi
-if ! check-cmd ip; then
-    echo "[ERROR] ip not installed"
+if ! check-cmd docker; then
+    echo "[ERROR] docker is not installed"
     CHECK=NOTOK
 fi
 if [ $CHECK != OK ]; then
@@ -28,42 +25,35 @@ if [ $CHECK != OK ]; then
     exit 1
 fi
 
-# Check if docker is installed
-if ! check-cmd docker; then
-    # Install docker-ce
-    echo "[INFO] docker not installed"
-    curl -s "$DOCKER_SCRIPT" | sudo bash
-    if [ "$?" -ne 0 ]; then
-        echo "[ERROR] Failed to install docker."
-        exit 2
-    fi
-    sudo usermod -aG docker $(id -u -n)
-    echo "[INFO] docker has been successfully installed."
-    echo "Please log out and log back in to take effect."
-    echo "After that please rerun this script."
-    exit 0
-else
-    echo "[INFO] docker found, skip installing"
-fi
-
+# Clone SDC source tree
 mkdir -p $(dirname $SDC_REPO) && cd $(dirname $SDC_REPO)
-if [ -f pom.xml ]; then
+if [ -f "$(basename $SDC_REPO)/pom.xml" ]; then
     echo "[INFO] SDC local repo already exists. skip cloning"
 else
     echo "[INFO] Cloning SDC repo into $SDC_REPO ..."
     git clone "https://gerrit.onap.org/r/sdc" $SDC_REPO
 fi
 
+# Prepare workspace
 mkdir -p $WORKSPACE/data/scripts
 mkdir -p $WORKSPACE/data/environments
 
+# Copy docker scripts into the workspace
 cp $SDC_REPO/sdc-os-chef/scripts/*.sh $WORKSPACE/data/scripts
 cp $SDC_REPO/sdc-os-chef/environments/Template.json $WORKSPACE/data/environments/AUTO.json
-# Obtain my IP
-MY_IP=$(ip route get 8.8.8.8 | awk '/src/{ print $7 }')
+# Obtain my IP and replace IPs in an env file
+MY_IP=$(get-my-ip)
 echo "[INFO] Your IP is $MY_IP"
-sed -i "s/yyy/$MY_IP/g" $WORKSPACE/data/environments/AUTO.json
-sed -i 's/xxx/AUTO/g' $WORKSPACE/data/environments/AUTO.json
+case `uname -s` in
+Linux)
+    sed -i "s/yyy/$MY_IP/g" $WORKSPACE/data/environments/AUTO.json
+    sed -i 's/xxx/AUTO/g' $WORKSPACE/data/environments/AUTO.json
+    ;;
+Darwin)
+    sed -i '' "s/yyy/$MY_IP/g" $WORKSPACE/data/environments/AUTO.json
+    sed -i '' 's/xxx/AUTO/g' $WORKSPACE/data/environments/AUTO.json
+    ;;
+esac
 
 mkdir -p $WORKSPACE/opt/config/
 echo AUTO > $WORKSPACE/opt/config/env_name.txt
@@ -71,6 +61,7 @@ echo nexus3.onap.org:10001 > $WORKSPACE/opt/config/nexus_docker_repo.txt
 echo docker > $WORKSPACE/opt/config/nexus_username.txt
 echo docker > $WORKSPACE/opt/config/nexus_password.txt
 
+# Setup Maven settings.xml
 mkdir -p $HOME/.m2
 cd $HOME/.m2
 if [ -f settings.xml ]; then
