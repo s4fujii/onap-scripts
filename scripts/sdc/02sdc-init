@@ -3,6 +3,11 @@
 SCRIPT_DIR=$(dirname ${BASH_SOURCE:-$0})
 . "$SCRIPT_DIR"/../funcs
 
+# read sdcrc
+if [ -r "$SCRIPT_DIR/sdcrc" ]; then
+    . "$SCRIPT_DIR/sdcrc"
+fi
+
 CHECK=OK
 if [ -z "$SDC_REPO" ]; then
     echo "[ERROR] SDC_REPO has not been set"
