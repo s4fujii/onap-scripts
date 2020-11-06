@@ -1,0 +1,36 @@
+#!/bin/bash
+set -u
+set -o pipefail
+TMPFILE=/tmp/k8s-get.tmp
+
+if [ -n "${1:-}" ]; then
+  FILTER="grep $1"
+  FILENAME=k8s-get-$(echo $1 | tr -d '[:blank:]')-$(date '+%y%m%d-%H%M%S').log
+else
+  FILTER="cat"
+  FILENAME=k8s-get-$(date '+%y%m%d-%H%M%S').log
+fi
+
+die() {
+  echo "$*"
+  exit 1
+}
+
+for type in pods pvc statefulset secrets configmap persistentvolume services deployment replicaset jobs; do
+  echo "======== type: $type ========" | tee -a $FILENAME
+
+  kubectl get $type -n onap -o wide > $TMPFILE 2>&1
+  if [ "$?" -ne 0 ]; then
+    die "kubectl execution error. Please check kubectl is installed / envvar KUBECONFIG points to proper config file."
+  fi
+  cat $TMPFILE | $FILTER | sed -r 's/\s+/ /g' | column -t -s' ' | tee -a $FILENAME
+
+  echo | tee -a $FILENAME
+  echo | tee -a $FILENAME
+done
+
+echo "log is saved as $FILENAME ."
+
+unset FILTER
+unset FILENAME
+rm -f $TMPFILE
