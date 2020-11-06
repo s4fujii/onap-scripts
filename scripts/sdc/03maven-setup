@@ -16,7 +16,7 @@ fi
 
 if ! check-cmd javac; then
     echo "[INFO] Installing JDK ..."
-    sudo apt install -y openjdk-8-jdk-headless
+    sudo -E apt install -y openjdk-11-jdk-headless
 else
     echo "[INFO] javac found, skip installing JDK"
 fi
