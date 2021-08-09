@@ -1,0 +1,122 @@
+# Copyright 2019-2021 the original kubernetes-event-exporter authors
+# Copyright 2021 Satoshi Fujii
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  namespace: monitoring
+  name: event-exporter
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: event-exporter
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: view
+subjects:
+  - kind: ServiceAccount
+    namespace: monitoring
+    name: event-exporter
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: event-exporter-cfg
+  namespace: monitoring
+data:
+  config.yaml: |
+    logLevel: error
+    logFormat: pretty
+    route:
+      routes:
+        - match:
+          - namespace: "onap"
+          - receiver: "file"
+    receivers:
+      - name: "file"
+        file:
+          path: "/output/k8s-events.txt"
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: event-exporter
+  namespace: monitoring
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: event-exporter
+        version: v1
+    spec:
+      serviceAccountName: event-exporter
+      initContainers:
+        - name: init-chown
+          image: alpine:3
+          imagePullPolicy: IfNotPresent
+          command:
+            - chown
+            - "-R"
+            - "65532:65532"
+            - "/output"
+          volumeMounts:
+            - mountPath: /output
+              name: log-dir
+      containers:
+        - name: event-exporter
+          image: ghcr.io/opsgenie/kubernetes-event-exporter:v0.10
+          imagePullPolicy: IfNotPresent
+          args:
+            - -conf=/data/config.yaml
+          volumeMounts:
+            - mountPath: /data
+              name: cfg
+            - mountPath: /output
+              name: log-dir
+#        - name: debug
+#          image: alpine:3
+#          imagePullPolicy: IfNotPresent
+#          command:
+#            - sleep
+#            - "360000"
+#          volumeMounts:
+#            - mountPath: /data
+#              name: cfg
+#            - mountPath: /output
+#              name: log-dir
+      volumes:
+        - name: cfg
+          configMap:
+            name: event-exporter-cfg
+        - name: log-dir
+          hostPath:
+            path: /dockerdata-nfs/k8s-event-logs
+            type: DirectoryOrCreate
+  selector:
+    matchLabels:
+      app: event-exporter
+      version: v1
