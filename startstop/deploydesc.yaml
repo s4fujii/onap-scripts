@@ -1,0 +1,13 @@
+# ONAP deployment descriptor example for deploy.py
+namespace: onap
+release_name: dev
+base_override: ~/onap/oom-override/override.yaml
+readiness_timeout: 300
+master_password: shinycolors
+deploy_order:
+  - [ contrib, platform, cassandra, "mariadb-galera" ]
+  - [ aaf, consul, multicloud ]
+  - [ portal, dmaap, aai, vid, msb ]
+  - [ uui, policy, sdc ]
+  - [ cds, sdnc, dcaegen2 ]
+  - [ so ]
