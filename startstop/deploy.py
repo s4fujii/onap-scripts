@@ -1,3 +1,12 @@
+# ---------------------------------------------------------------------------
+# deploy.py
+#
+# Copyright (c) 2021 Satoshi Fujii
+#
+# This software is released under the MIT license.
+# See https://opensource.org/licenses/MIT .
+# ---------------------------------------------------------------------------
+
 import argparse
 import json
 import logging

@@ -1,3 +1,12 @@
+# ---------------------------------------------------------------------------
+# startstop.py
+#
+# Copyright (c) 2021 Satoshi Fujii
+#
+# This software is released under the MIT license.
+# See https://opensource.org/licenses/MIT .
+# ---------------------------------------------------------------------------
+
 from kubernetes import config, client
 import os
 import sys
@@ -84,7 +93,7 @@ if __name__ == '__main__':
         if last_action == 'none' or data == None or len(data) == 0:
             print('error: no last state data. cannot restore to original state. aborted.')
             sys.exit(4)
-        
+
         for item in data:
             kind = item['kind']
             if kind == 'deployment':
