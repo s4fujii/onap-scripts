@@ -7,11 +7,13 @@
 # See https://opensource.org/licenses/MIT .
 # ---------------------------------------------------------------------------
 
-from kubernetes import config, client
-import os
-import sys
 import argparse
 import json
+import os
+import sys
+
+import kubernetes.client.rest
+from kubernetes import config, client
 
 # ホームディレクトリの取得
 if os.name == 'nt':
@@ -34,18 +36,31 @@ DEFAULT_NAMESPACE = 'onap'
 # --state オプションが指定されなかった時に使用する state ファイルのパス
 DEFAULT_STATE = os.path.join(home_dir, '.onap', 'last-state')
 
-# コマンドライン引数パーサの準備
-parser = argparse.ArgumentParser()
-parser.description = 'ONAP start/stop script'
-parser.add_argument('action', help='action to perform', choices=['start', 'stop'])
-parser.add_argument('--config', '-c', help='path to kubeconfig file. ~/.kube/config or KUBECONFIG will be used if not specified.', metavar='FILE')
-parser.add_argument('--state', '-s', help='path to last state file (must be writable).', default=DEFAULT_STATE, metavar='FILE')
-parser.add_argument('--namespace', '-n', help='kubernetes namespace where ONAP is deployed.', default=DEFAULT_NAMESPACE)
-parser.add_argument('--force', '-f', action='store_true', help='force to do even if the specified action is the same as last time')
+
+def parse_arguments() -> argparse.Namespace:
+    """コマンドライン引数の処理を行う。
+
+    :return:
+    :rtype:
+    """
+    parser = argparse.ArgumentParser()
+    parser.description = 'ONAP start/stop script'
+    parser.add_argument('action', help='action to perform', choices=['start', 'stop'])
+    parser.add_argument('--config', '-c',
+                        help='path to kubeconfig file. ~/.kube/config or KUBECONFIG will be used if not specified.',
+                        metavar='FILE')
+    parser.add_argument('--state', '-s', help='path to last state file (must be writable).', default=DEFAULT_STATE,
+                        metavar='FILE')
+    parser.add_argument('--namespace', '-n', help='kubernetes namespace where ONAP is deployed.',
+                        default=DEFAULT_NAMESPACE)
+    parser.add_argument('--force', '-f', action='store_true',
+                        help='force to do even if the specified action is the same as last time')
+    return parser.parse_args()
+
 
 if __name__ == '__main__':
     # コマンドライン引数処理
-    args = parser.parse_args()
+    args = parse_arguments()
 
     # 引数で指定された場合はその値を使い、そうでない場合はデフォルト値を使用
     config_candidate = [args.config] if args.config else DEFAULT_KUBECONFIG
@@ -90,22 +105,31 @@ if __name__ == '__main__':
             else:
                 print('error: last action was "' + last_action + '". aborted.')
                 sys.exit(3)
-        if last_action == 'none' or data == None or len(data) == 0:
+        if last_action == 'none' or data is None or len(data) == 0:
             print('error: no last state data. cannot restore to original state. aborted.')
             sys.exit(4)
 
+        failed_items = []
         for item in data:
             kind = item['kind']
-            if kind == 'deployment':
-                scale = apps_v1.read_namespaced_deployment_scale(item['name'], item['namespace'])
-                # replicas を復元する
-                scale.spec.replicas = item['replicas']
-                response = apps_v1.patch_namespaced_deployment_scale(item['name'], item['namespace'], scale)
-            if kind == 'statefulSet':
-                scale = apps_v1.read_namespaced_stateful_set_scale(item['name'], item['namespace'])
-                # replicas を復元する
-                scale.spec.replicas = item['replicas']
-                response = apps_v1.patch_namespaced_stateful_set_scale(item['name'], item['namespace'], scale)
+            try:
+                if kind == 'deployment':
+                    scale = apps_v1.read_namespaced_deployment_scale(item['name'], item['namespace'])
+                    # replicas を復元する
+                    scale_org = scale.spec.replicas
+                    scale.spec.replicas = item['replicas']
+                    response = apps_v1.patch_namespaced_deployment_scale(item['name'], item['namespace'], scale)
+                    print(f"ns={item['namespace']} Deployment {item['name']} scaled {scale_org} ==> {scale}")
+                elif kind == 'statefulSet':
+                    scale = apps_v1.read_namespaced_stateful_set_scale(item['name'], item['namespace'])
+                    # replicas を復元する
+                    scale_org = scale.spec.replicas
+                    scale.spec.replicas = item['replicas']
+                    response = apps_v1.patch_namespaced_stateful_set_scale(item['name'], item['namespace'], scale)
+                    print(f"ns={item['namespace']} StatefulSet {item['name']} scaled {scale_org} ==> {scale}")
+            except kubernetes.client.rest.ApiException as e:
+                print(f"ns={item['namespace']} {item['kind']} {item['name']} SCALE FAILED")
+                failed_items.append(item)
 
         # state ファイルの last_action を更新する
         last_action = action
@@ -123,9 +147,9 @@ if __name__ == '__main__':
         data = []
         # TODO: 内包表記に変える
         for deployment in deployments.items:
-            print('name=%s, desired=%s, ready=%s' % (
-                deployment.metadata.name, deployment.status.replicas, deployment.status.ready_replicas))
-            if deployment.status.replicas == None:
+            # print('name=%s, desired=%s, ready=%s' % (
+            #     deployment.metadata.name, deployment.status.replicas, deployment.status.ready_replicas))
+            if deployment.status.replicas is None:
                 continue
             data.append({
                 'namespace': namespace,
@@ -138,7 +162,7 @@ if __name__ == '__main__':
         for stateful_set in stateful_sets.items:
             print('name=%s, desired=%s, ready=%s' % (
                 stateful_set.metadata.name, stateful_set.status.replicas, stateful_set.status.ready_replicas))
-            if stateful_set.status.replicas == None:
+            if stateful_set.status.replicas is None:
                 continue
             data.append({
                 'namespace': namespace,
@@ -153,19 +177,24 @@ if __name__ == '__main__':
         with open(state_file, 'w') as f:
             json.dump({'last_action': action, 'data': data}, f)
 
+        failed_items = []
         for item in data:
-            if item['kind'] == 'deployment':
-                scale = apps_v1.read_namespaced_deployment_scale(item['name'], item['namespace'])
-                # print(scale)
-                scale.spec.replicas = 0
-                response = apps_v1.patch_namespaced_deployment_scale(item['name'], item['namespace'], scale)
-                print(response)
-            if item['kind'] == 'statefulSet':
-                scale = apps_v1.read_namespaced_stateful_set_scale(item['name'], item['namespace'])
-                # print(scale)
-                scale.spec.replicas = 0
-                response = apps_v1.patch_namespaced_stateful_set_scale(item['name'], item['namespace'], scale)
-                print(response)
+            try:
+                if item['kind'] == 'deployment':
+                    scale = apps_v1.read_namespaced_deployment_scale(item['name'], item['namespace'])
+                    scale_org = scale.spec.replicas
+                    scale.spec.replicas = 0
+                    response = apps_v1.patch_namespaced_deployment_scale(item['name'], item['namespace'], scale)
+                    print(f"ns={item['namespace']} {item['kind']} {item['name']} scaled {scale_org} ==> {scale}")
+                elif item['kind'] == 'statefulSet':
+                    scale = apps_v1.read_namespaced_stateful_set_scale(item['name'], item['namespace'])
+                    scale_org = scale.spec.replicas
+                    scale.spec.replicas = 0
+                    response = apps_v1.patch_namespaced_stateful_set_scale(item['name'], item['namespace'], scale)
+                    print(f"ns={item['namespace']} {item['kind']} {item['name']} scaled {scale_org} ==> {scale}")
+            except kubernetes.client.rest.ApiException as e:
+                print(f"ns={item['namespace']} {item['kind']} {item['name']} SCALE FAILED")
+                failed_items.append(item)
     else:
         print('error: unknown action: ' + action)
         sys.exit(2)
